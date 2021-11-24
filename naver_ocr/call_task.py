@@ -77,6 +77,7 @@ class call_task:
 
         return full_line_item_list
 
+
     def parse_json_files(self,json_file_path_pattern):
         json_file_path_list = common.getFileList(json_file_path_pattern)
         ocr_convert_count = 0
