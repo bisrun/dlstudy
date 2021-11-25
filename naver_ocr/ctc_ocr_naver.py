@@ -18,9 +18,6 @@ from call_task import call_task
 import common
 import sys
 
-
-
-
 def run():
     try :
         bot = telegram.Bot(token=cc._TELEGRAM_TOKEN)

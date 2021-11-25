@@ -9,9 +9,10 @@ import uuid
 import time
 import re
 
-class task_item:
+class TaskItem:
     def __init__(self):
         self.task_name = ""
+        self.task_effect = "" #good, bad
         self.task_cost = 0
         self.addr_from = ""
         self.addr_to = ""
@@ -33,6 +34,10 @@ class call_task:
         logManager = Logger.instance()
         self._logger = logManager.getLogger()
         self.config = nvconfig.instance()
+        self.ocr_unit_separater = "  "
+        self.ocr_group_separater = " || "
+        self.task_name_template = re.compile(r"\[CT-([-_\.0-9a-zA-Z]*).jpg\]:(\w+):(\d+)s")
+
 
     def request_ocr(self, image_file_path):
         api_url = 'https://404f4f52beec4fe69742aba3806550c5.apigw.ntruss.com/custom/v1/11090/734a5dcc37d25a4730bd2c632648e3d484d2343b6a2eff161746eb6322792c22/general'
@@ -68,8 +73,17 @@ class call_task:
         for image_file_path in image_file_path_list:
             # image_file_path = os.path.join(image_dir, image_file_path)
             image_file_name = os.path.basename(image_file_path)
-            json_file_name = image_file_name.replace('.jpg', '.json')
-            json_file_path = os.path.join(json_dir_path, json_file_name)
+            #json_file_name = image_file_name.replace('.jpg', '.json')
+
+            #json file폴더구조를 image file 과 동일한 폴더구조를 가지도록 한다.
+            json_file_path = image_file_path.replace(self.config._IMAGE_DIR_PATH, self.config._JSON_DIR_PATH)
+            #json_file_path = os.path.join(json_dir_path, json_file_name)
+            json_file_path = json_file_path.replace('.jpg', '.json')
+            json_temp_dir = os.path.dirname( json_file_path)
+            if os.path.exists(json_temp_dir) == False :
+                common.makedirs(json_temp_dir)
+
+
             is_request_succeed = True
             # image로 부터 ocr 정보를 추출한다.
 
@@ -141,6 +155,7 @@ class call_task:
 
         #마지막 라인을 여기서 담는다.
         if len(line_item_list) > 0:
+            line_item_list = sorted(line_item_list, key=lambda k: k['boundingPoly']['vertices'][0]['x'], reverse=False)
             full_line_item_list.append(line_item_list)
 
         return full_line_item_list
@@ -178,28 +193,47 @@ class call_task:
 
                     # task 이름이 있는 곳이 , task 정보의 시작이다.
                     if task_attr.find("[CT-2021") == 0:
-                        new_task = True
+                        task_item = TaskItem()
+
                         if task_attr.find("--") >= 0:
                             #self._logger.debug("{} {}".format(task_attr, task_attr.find("--")) )
                             task_attr = task_attr.replace("--","-") # ocr 오류로 인해 '-' 을 '--' 로 오인식하는 경우가 있다.
                         task_line = 0
                         task_count += 1
+                        ru = self.task_name_template.findall(task_attr)
+                        task_item.task_name = ru[0][0]
+                        task_item.task_effect = ru[0][1]
+                        task_item.task_cost = ru[0][2]
 
-                    #의미없는 문제는 제거한다.
-                    if task_attr == ">":
-                        continue
+                    ret, task_attr_conv = self.task_attr_filter(task_attr, task_line )
+                    if ret == -1: #사용하지 않는 속성
+                        continue;
+                    elif ret == 1:
+                        task_attr = task_attr_conv
+                    #else
+                    #   task_attr 그대로 사용한다.
+
 
                     #같은 행에서 , 문장분리 - 문장과 문장이 100px넘으면 분리한다.
-                    if l > 0 :
+                    if l > 0 : #task 이름 다음 행부터 분석
                         if ln['boundingPoly']['vertices'][0]['x'] - last_attr['boundingPoly']['vertices'][1]['x'] > 100 :
-                            line_string.append(" ____ ")
+                            line_string.append(self.ocr_group_separater)
                         #print(ln['boundingPoly']['vertices'][0]['x'] - last_attr['boundingPoly']['vertices'][1]['x'] )
 
                     last_attr = ln
 
                     line_string.append(task_attr)
-                    line_string.append(" || ")
+                    line_string.append(self.ocr_unit_separater)
 
                 if len(line_string) > 0 :
                     self._logger.info("f:{},t:{},r:{} >> {}".format(file_cnt, task_count, task_line, ''.join(line_string)))
                     task_line += 1
+
+    #ret 0: 그냥사용한다. -1: 사용하지 않는다, 1:값이 변경되었다. replace해야한다.
+    def task_attr_filter(self, task_attr, task_line):
+        # 의미없는 문는 제거한다.
+        if task_attr == ">":
+            return -1, None
+        elif task_attr == ")":
+            return -1, None
+        return 0, None

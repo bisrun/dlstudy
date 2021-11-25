@@ -10,6 +10,12 @@ def getDirList(dir_path, dirlist):
                 dirlist = getDirList(entry.path, dirlist)
         return dirlist
 
+def makedirs(path):
+   try:
+        os.makedirs(path)
+   except OSError:
+       if not os.path.isdir(path):
+           raise
 
 def getFileList(image_dir):
     filelist = []
