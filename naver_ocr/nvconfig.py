@@ -31,9 +31,10 @@ class nvconfig :
             config = configparser.ConfigParser()
             config.read(self._config_file_path, 'utf-8')
             print(self._config_file_path)
-
             self._TELEGRAM_CHAT_ID = config['COMMON']['TELEGRAM_CHAT_ID']
             self._TELEGRAM_TOKEN = config['COMMON']['TELEGRAM_TOKEN']
+            self._IMAGE_DIR_PATH = config['COMMON']['IMAGE_DIR_PATH']
+            self._JSON_DIR_PATH = config['COMMON']['JSON_DIR_PATH']
             self._logDir = config['OUTPUT']['LOG_DIR_PATH']
             self._logFileName = config['OUTPUT']['LOG_FILE_NAME']
             self._logFilePath = os.path.join(self._logDir, config['OUTPUT']['LOG_FILE_NAME'])
