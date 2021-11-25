@@ -26,6 +26,36 @@ class TaskItem:
         self.car_attr = ""  # 1톤/카
         self.carload_type = "" #독차, 혼차
         self.recv_money_type = "" #인수증, 선/착불 ..
+        self.task_line_list = [] #image로부터 ocr을 통해 분석한 task line, 일반적으로 5개 라인으로 구성된다.
+        self.task_line_parsing_func = {1: self.task_line1_parsing,
+                     2: self.task_line2_parsing,
+                     3: self.task_line3_parsing,
+                     4: self.task_line4_parsing,
+                     5: self.task_line_invalid}
+
+    # 출발지주소, 목적지 주소
+    def task_line1_parsing(self, line):
+        return self.task_line_list[0]
+    def task_line2_parsing(self, line):
+        return self.task_line_list[1]
+    def task_line3_parsing(self, line):
+        return self.task_line_list[2]
+    def task_line4_parsing(self, line):
+        return self.task_line_list[3]
+
+    def task_line_invalid(self, line):
+        self._logger.info("invalid task_line {} -{}".format(line, self.task_name))
+
+    def write_task(self, ctc_info_fd):
+        for i, line in enumerate(self.task_line_list):
+            if i < 4 :
+                info = self.task_line_parsing_func[i](line)
+                ctc_info_fd.write(info)
+            else:
+                self.task_line_invalid(line)
+
+        ctc_info_fd.write("\n")
+
 
 
 
@@ -69,6 +99,7 @@ class call_task:
         image_file_path_list = common.getFileList(image_file_path_pattern)
         ocr_convert_count = 0
         ocr_convert_success_count = 0
+        image_file_path_list.sort()
 
         for image_file_path in image_file_path_list:
             # image_file_path = os.path.join(image_dir, image_file_path)
@@ -97,12 +128,12 @@ class call_task:
                 ocr_convert_success_count += 1
                 with open(json_file_path, 'w', encoding='utf-8') as outfile:
                     json.dump(ocr_json, outfile, indent=4, ensure_ascii=False)
-                    self._logger.info("image proc:{}".format(image_file_name))
+                    self._logger.info("{} image to json:{}".format(ocr_convert_count, image_file_name))
 
             ocr_convert_count += 1
 
-            if ocr_convert_count > 10:
-                break;
+            #if ocr_convert_count > 10:
+            #    break;
 
             time.sleep(1)
         return ocr_convert_success_count
@@ -167,6 +198,8 @@ class call_task:
         json_file_path_list.sort()
         ocr_convert_count = 0
         ocr_convert_success_count = 0
+        ctc_info_fd = open("ctc_info.txt", 'w')
+        task_item = None
 
         for file_cnt, json_file_path in enumerate(json_file_path_list):
             json_fp = open(json_file_path, mode="r", encoding='utf-8')
@@ -193,11 +226,19 @@ class call_task:
 
                     # task 이름이 있는 곳이 , task 정보의 시작이다.
                     if task_attr.find("[CT-2021") == 0:
-                        task_item = TaskItem()
 
+                        #**중요하다. 여기서 결과파일을 쓴다.
+                        if task_item is not None:
+                            task_item.write_task(ctc_info_fd)
+                            #이전에 입력한 task_item이 있다. file 출력을 한다.
+
+                        task_item = TaskItem()
                         if task_attr.find("--") >= 0:
                             #self._logger.debug("{} {}".format(task_attr, task_attr.find("--")) )
                             task_attr = task_attr.replace("--","-") # ocr 오류로 인해 '-' 을 '--' 로 오인식하는 경우가 있다.
+                        if task_attr.find("_.") >= 0:
+                            # self._logger.debug("{} {}".format(task_attr, task_attr.find("--")) )
+                            task_attr = task_attr.replace("_.", "_")  # ocr 오류로 인해 '_' 을 '_.' 로 오인식하는 경우가 있다.
                         task_line = 0
                         task_count += 1
                         ru = self.task_name_template.findall(task_attr)
@@ -207,8 +248,8 @@ class call_task:
 
                     ret, task_attr_conv = self.task_attr_filter(task_attr, task_line )
                     if ret == -1: #사용하지 않는 속성
-                        continue;
-                    elif ret == 1:
+                        continue
+                    elif ret == 1: #변형된 속성, 예를 들면 오타를 수정한 결과
                         task_attr = task_attr_conv
                     #else
                     #   task_attr 그대로 사용한다.
@@ -218,16 +259,28 @@ class call_task:
                     if l > 0 : #task 이름 다음 행부터 분석
                         if ln['boundingPoly']['vertices'][0]['x'] - last_attr['boundingPoly']['vertices'][1]['x'] > 100 :
                             line_string.append(self.ocr_group_separater)
+
                         #print(ln['boundingPoly']['vertices'][0]['x'] - last_attr['boundingPoly']['vertices'][1]['x'] )
 
                     last_attr = ln
-
                     line_string.append(task_attr)
                     line_string.append(self.ocr_unit_separater)
 
                 if len(line_string) > 0 :
                     self._logger.info("f:{},t:{},r:{} >> {}".format(file_cnt, task_count, task_line, ''.join(line_string)))
                     task_line += 1
+                    task_item.task_line_list.append(line_string)
+
+            #end of parsing one json file.
+
+        #end of parsing all json files
+        if task_item != None:
+            # 이전에 입력한 task_item이 있다. file 출력을 한다.
+            task_item.write_task(ctc_info_fd)
+
+        #file close
+        ctc_info_fd.close()
+
 
     #ret 0: 그냥사용한다. -1: 사용하지 않는다, 1:값이 변경되었다. replace해야한다.
     def task_attr_filter(self, task_attr, task_line):

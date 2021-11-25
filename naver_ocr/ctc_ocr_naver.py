@@ -26,7 +26,7 @@ def run():
 
         ct = call_task()
         # image 로부터 ocr 정보 json을 얻는다.
-        image_count = ct.save_ocr_json_from_image(image_file_path_pattern, cc._JSON_DIR_PATH)
+        #image_count = ct.save_ocr_json_from_image(image_file_path_pattern, cc._JSON_DIR_PATH)
         json_count = ct.parse_json_files(json_file_path_pattern)
 
     except Exception as e:
