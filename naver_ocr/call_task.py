@@ -9,8 +9,23 @@ import uuid
 import time
 import re
 
+re_task_name_template = re.compile(r"\[CT-([-_\.0-9a-zA-Z]*).jpg\]:(\w+):(\d+)s")
+re_dist_and_time = re.compile(r"(\d+Km).* (\d+:\d+)")
+re_update = re.compile(r"([가-힣0-9a-zA-Z]+상)")
+re_downdate = re.compile(r"([가-힣0-9a-zA-Z]+착)")
+re_updowndate = re.compile(r"([가-힣0-9a-zA-Z]+상).* ([가-힣0-9a-zA-Z]+착)")
+re_fare = re.compile(r'((-)?\d{1,3}(,\d{3})*(\.\d+)?)원')
+re_truck_ton = re.compile(r'(\d+(\.\d{1,2})?)톤')
+
+ocr_unit_separater = " "
+ocr_group_separater = " || "
+
+
+
 class TaskItem:
     def __init__(self):
+
+        self._logger = Logger.instance().getLogger()
         self.task_name = ""
         self.task_effect = "" #good, bad
         self.task_cost = 0
@@ -21,41 +36,117 @@ class TaskItem:
         self.upload_date = "" #당상, 내상
         self.download_date = "" # 당착, 내착
         self.fare_total = 0
+        self.car_limit_weight= 0.0
         self.fare_delivery = 0
         self.fare_add = 0
         self.car_attr = ""  # 1톤/카
+        self.up_carry =""
+        self.down_carry = ""
         self.carload_type = "" #독차, 혼차
         self.recv_money_type = "" #인수증, 선/착불 ..
         self.task_line_list = [] #image로부터 ocr을 통해 분석한 task line, 일반적으로 5개 라인으로 구성된다.
-        self.task_line_parsing_func = {1: self.task_line1_parsing,
+        self.task_line_parsing_func = {
+                    0: self.task_line0_parsing,
+                    1: self.task_line1_parsing,
                      2: self.task_line2_parsing,
                      3: self.task_line3_parsing,
                      4: self.task_line4_parsing,
                      5: self.task_line_invalid}
 
     # 출발지주소, 목적지 주소
-    def task_line1_parsing(self, line):
-        return self.task_line_list[0]
-    def task_line2_parsing(self, line):
-        return self.task_line_list[1]
-    def task_line3_parsing(self, line):
-        return self.task_line_list[2]
-    def task_line4_parsing(self, line):
-        return self.task_line_list[3]
+    def task_line0_parsing(self, line):
+        if line.find("--") >= 0:
+            line = line.replace("--", "-")  # ocr 오류로 인해 '-' 을 '--' 로 오인식하는 경우가 있다.
+        if line.find("_.") >= 0:
+            line = line.replace("_.", "_")  # ocr 오류로 인해 '_' 을 '_.' 로 오인식하는 경우가 있다.
+        if line.find(" ") >= 0:
+            line = line.replace(" ", "")  # 첫번째 라인에는 띄어쓰기 없다.
 
-    def task_line_invalid(self, line):
-        self._logger.info("invalid task_line {} -{}".format(line, self.task_name))
+        ru = re_task_name_template.findall(line)
+        if ru is not None and len(ru) > 0 and len(ru[0]) >= 3:
+            self.task_name = ru[0][0]
+            self.task_effect = ru[0][1]
+            self.task_cost = ru[0][2]
+        else:
+            self._logger.error("error: task name attr {}".format(line))
+
+        return line
+    def task_line1_parsing(self, line):
+        addr = line.split(ocr_group_separater)
+        if len(addr) == 2:
+            self.addr_from = addr[0]
+            self.addr_to = addr[1]
+        return line
+
+    def task_line2_parsing(self, line):
+        # 당상  지 8Km   || 14:06 지  내착
+        ru = re_dist_and_time.findall(line)
+        if self.task_name.find("20211116-085425-00_02") >=0 :
+            print(line)
+
+        if ru is not None and len(ru) > 0 and len(ru[0]) == 2:
+            self.reg_time = ru[0][1]
+            line2 = re.sub(ru[0][0], "", line)
+            line2 = re.sub(ru[0][1], "", line2)
+
+            ru2 = re_update.findall(line2)
+            if ru2 is not None and len(ru2) > 0 :
+                self.upload_date = ru2[0]
+                line2 = re.sub(ru2[0], "", line2)
+
+            ru3 = re_downdate.findall(line2)
+            if ru3 is not None and len(ru3) > 0 :
+                self.download_date = ru3[0]
+                line2 = re.sub(ru3[0], "", line2)
+
+            lines = line2.split(ocr_group_separater)
+            if len(lines) == 2:
+                self.up_carry = lines[0]
+                self.down_carry = lines[1]
+
+        else:
+            self._logger.error("error: 2nd line attr {}".format(line))
+
+        return line
+
+    def task_line3_parsing(self, line):
+        self.description = line
+        ru = re_truck_ton.findall(line)
+        if ru is not None and len(ru) > 0 :
+            self.car_limit_weight = ru[0][0]
+        else:
+            self._logger.error("error: 4th line attr {}".format(line))
+        return line
+    def task_line4_parsing(self, line):
+        ru = re_fare.findall(line)
+        if ru is not None and len(ru) > 0 :
+            self.fare_total = ru[0][0]
+        else:
+            self._logger.error("error: 4th line attr {}".format(line))
+        return line
+
+    def task_line_invalid(self, line, line_no):
+        self._logger.info("invalid task_line {}, {} -{}".format(line_no, line, self.task_name))
 
     def write_task(self, ctc_info_fd):
+        #ctc_info_fd.write("{}\t{}\t{}\t".format(self.task_name, self.task_effect, self.task_cost))
         for i, line in enumerate(self.task_line_list):
-            if i < 4 :
+            if i < 5:
                 info = self.task_line_parsing_func[i](line)
-                ctc_info_fd.write(info)
+                #ctc_info_fd.write(info)
+                #ctc_info_fd.write("$$")
             else:
-                self.task_line_invalid(line)
+                self.task_line_invalid(line, i)
 
-        ctc_info_fd.write("\n")
+        desc = "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n".format(self.task_name, self.task_effect, self.task_cost,
+                                                              self.addr_from, self.addr_to, self.fare_total,
+                                                              self.reg_time, self.upload_date,
+                                                              self.download_date, self.up_carry, self.down_carry, self.car_limit_weight, self.description)
+        ctc_info_fd.write(desc)
 
+        self._logger.info(desc)
+        #if self.task_name.find("CT-20211116-132418-00_04") >= 0 :
+        #    print(self.task_name)
 
 
 
@@ -64,9 +155,8 @@ class call_task:
         logManager = Logger.instance()
         self._logger = logManager.getLogger()
         self.config = nvconfig.instance()
-        self.ocr_unit_separater = "  "
-        self.ocr_group_separater = " || "
-        self.task_name_template = re.compile(r"\[CT-([-_\.0-9a-zA-Z]*).jpg\]:(\w+):(\d+)s")
+
+
 
 
     def request_ocr(self, image_file_path):
@@ -121,7 +211,7 @@ class call_task:
             try:
                 ocr_json = self.request_ocr(image_file_path)
             except:
-                self._logger.error('exception error: {}'.format(image_file_name))
+                self._logger.error('exception error 3: {}'.format(image_file_name))
                 is_request_succeed = False
 
             if is_request_succeed:
@@ -166,7 +256,7 @@ class call_task:
 
         for cur_item in ocr_data_list:
             if not cur_item.get('inferText'):
-                self._logger.info('문제 있음')
+                self._logger.info('json parsing error -2')
                 continue
 
             if index == 0:
@@ -199,19 +289,33 @@ class call_task:
         ocr_convert_count = 0
         ocr_convert_success_count = 0
         ctc_info_fd = open("ctc_info.txt", 'w')
+        ctc_info_fd.write("{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n".format("task_name", "task_effect", "task_cost",
+                                                              "addr_from", "addr_to", "fare_total",
+                                                              "reg_time", "upload_date",
+                                                              "download_date", "up_carry", "down_carry", "car_limit_weight", "description"))
+
         task_item = None
 
         for file_cnt, json_file_path in enumerate(json_file_path_list):
+            self._logger.info("file start:{}".format(json_file_path))
             json_fp = open(json_file_path, mode="r", encoding='utf-8')
             ob_ocr_json = json.load(json_fp)
 
+
+            if ob_ocr_json.get('images') is None:
+                self._logger.info("error:There is no images tag in jsonfile:{}".format(json_file_path))
+                continue
             ocr_data_list = ob_ocr_json['images']
+
+            if ocr_data_list[0].get('fields') is None:
+                self._logger.info("error:There is no fields tag in jsonfile:{}".format(json_file_path))
+                continue
             ocr_data_list = ocr_data_list[0]['fields']
 
             ocr_data_list = sorted(ocr_data_list, key=lambda k: k['boundingPoly']['vertices'][0]['y'], reverse=False)
             print(len(ocr_data_list))
             lines = self.get_separate_line(ocr_data_list)
-            self._logger.info("file : {}".format(json_file_path))
+
 
             task_line = 0
             task_count = 0
@@ -219,32 +323,24 @@ class call_task:
             for i, line in enumerate(lines):
                 #self._logger.info(i, line)
                 line_string =[]
-
                 #하나의 라인을 그룹핑한다.
                 for l, ln in enumerate(line):
                     task_attr = ln['inferText']
 
                     # task 이름이 있는 곳이 , task 정보의 시작이다.
                     if task_attr.find("[CT-2021") == 0:
-
+                        self._logger.info("start:{}".format(task_attr))
+                        #if task_attr.find("[CT-20211116-155031-00_02.jpg]") >= 0:
+                        #    print(task_attr)
                         #**중요하다. 여기서 결과파일을 쓴다.
                         if task_item is not None:
                             task_item.write_task(ctc_info_fd)
                             #이전에 입력한 task_item이 있다. file 출력을 한다.
-
                         task_item = TaskItem()
-                        if task_attr.find("--") >= 0:
-                            #self._logger.debug("{} {}".format(task_attr, task_attr.find("--")) )
-                            task_attr = task_attr.replace("--","-") # ocr 오류로 인해 '-' 을 '--' 로 오인식하는 경우가 있다.
-                        if task_attr.find("_.") >= 0:
-                            # self._logger.debug("{} {}".format(task_attr, task_attr.find("--")) )
-                            task_attr = task_attr.replace("_.", "_")  # ocr 오류로 인해 '_' 을 '_.' 로 오인식하는 경우가 있다.
                         task_line = 0
                         task_count += 1
-                        ru = self.task_name_template.findall(task_attr)
-                        task_item.task_name = ru[0][0]
-                        task_item.task_effect = ru[0][1]
-                        task_item.task_cost = ru[0][2]
+
+
 
                     ret, task_attr_conv = self.task_attr_filter(task_attr, task_line )
                     if ret == -1: #사용하지 않는 속성
@@ -258,18 +354,18 @@ class call_task:
                     #같은 행에서 , 문장분리 - 문장과 문장이 100px넘으면 분리한다.
                     if l > 0 : #task 이름 다음 행부터 분석
                         if ln['boundingPoly']['vertices'][0]['x'] - last_attr['boundingPoly']['vertices'][1]['x'] > 100 :
-                            line_string.append(self.ocr_group_separater)
+                            line_string.append(ocr_group_separater)
 
                         #print(ln['boundingPoly']['vertices'][0]['x'] - last_attr['boundingPoly']['vertices'][1]['x'] )
 
                     last_attr = ln
                     line_string.append(task_attr)
-                    line_string.append(self.ocr_unit_separater)
+                    line_string.append(ocr_unit_separater)
 
                 if len(line_string) > 0 :
                     self._logger.info("f:{},t:{},r:{} >> {}".format(file_cnt, task_count, task_line, ''.join(line_string)))
                     task_line += 1
-                    task_item.task_line_list.append(line_string)
+                    task_item.task_line_list.append(''.join(line_string))
 
             #end of parsing one json file.
 

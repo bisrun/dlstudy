@@ -30,9 +30,9 @@ def run():
         json_count = ct.parse_json_files(json_file_path_pattern)
 
     except Exception as e:
-        err_msg = "exception {}".format(e)
+        err_msg = "error 1 {}".format(e)
         #bot.sendMessage(chat_id=cc._TELEGRAM_CHAT_ID, text=err_msg)
-        print("exception ", e)
+        logger.info(err_msg)
 
 if __name__ == "__main__":
     argParser = argparse.ArgumentParser()
