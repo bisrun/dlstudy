@@ -38,6 +38,14 @@ class nvconfig :
             self._logDir = config['OUTPUT']['LOG_DIR_PATH']
             self._logFileName = config['OUTPUT']['LOG_FILE_NAME']
             self._logFilePath = os.path.join(self._logDir, config['OUTPUT']['LOG_FILE_NAME'])
+
+            self._outDir = config['OUTPUT']['CTC_OUTPUT_DIR_PATH']
+            self._CTC_INFO_01_FILE_PATH = os.path.join(self._outDir, config['OUTPUT']['CTC_INFO_01_TXT_FILENAME'])
+            self._CTC_INFO_02_FILE_PATH = os.path.join(self._outDir, config['OUTPUT']['CTC_INFO_02_TXT_FILENAME'])
+            self._CTC_INFO_03_FILE_PATH = os.path.join(self._outDir, config['OUTPUT']['CTC_INFO_03_TXT_FILENAME'])
+
+
+
             # chck input file
             '''
             if os.path.exists(self._LINK_FILE_PATH) == False:

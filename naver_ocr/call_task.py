@@ -4,6 +4,7 @@ import common
 import json
 import os
 import cv2
+import csv
 import requests
 import uuid
 import time
@@ -45,6 +46,12 @@ class TaskItem:
         self.carload_type = "" #독차, 혼차
         self.recv_money_type = "" #인수증, 선/착불 ..
         self.task_line_list = [] #image로부터 ocr을 통해 분석한 task line, 일반적으로 5개 라인으로 구성된다.
+        self.pos_from_x =0.0
+        self.pos_from_y = 0.0
+        self.pos_to_x = 0.0
+        self.pos_to_y = 0.0
+        self.distance =0.0
+        self.eta = 0.0
         self.task_line_parsing_func = {
                     0: self.task_line0_parsing,
                     1: self.task_line1_parsing,
@@ -128,7 +135,7 @@ class TaskItem:
     def task_line_invalid(self, line, line_no):
         self._logger.info("invalid task_line {}, {} -{}".format(line_no, line, self.task_name))
 
-    def write_task(self, ctc_info_fd):
+    def write_task_by_line(self, ctc_info_fd):
         #ctc_info_fd.write("{}\t{}\t{}\t".format(self.task_name, self.task_effect, self.task_cost))
         for i, line in enumerate(self.task_line_list):
             if i < 5:
@@ -137,16 +144,28 @@ class TaskItem:
                 #ctc_info_fd.write("$$")
             else:
                 self.task_line_invalid(line, i)
+        self.write_task_to_file(ctc_info_fd)
+        # self._logger.info(desc)
 
-        desc = "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n".format(self.task_name, self.task_effect, self.task_cost,
-                                                              self.addr_from, self.addr_to, self.fare_total,
-                                                              self.reg_time, self.upload_date,
-                                                              self.download_date, self.up_carry, self.down_carry, self.car_limit_weight, self.description)
+    def write_task_to_file(self, ctc_info_fd):
+        desc = "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n".format(self.task_name, self.task_effect, self.task_cost,
+                                                                 self.addr_from, self.addr_to, self.pos_from_x, self.pos_from_y,
+                                                                 self.pos_to_x, self.pos_to_y, self.distance, self.eta, self.fare_total,
+                                                                 self.reg_time, self.upload_date,
+                                                                 self.download_date, self.up_carry, self.down_carry,
+                                                                 self.car_limit_weight, self.description)
         ctc_info_fd.write(desc)
 
-        self._logger.info(desc)
-        #if self.task_name.find("CT-20211116-132418-00_04") >= 0 :
-        #    print(self.task_name)
+    @classmethod
+    def write_task_header(self, ctc_info_fd):
+        ctc_info_fd.write("{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n".format("task_name", "task_effect", "task_cost",
+                                                              "addr_from", "addr_to", "pos_from_x", "pos_from_y",
+                                                              "pos_to_x", "pos_to_y", "distance", "eta","fare_total",
+                                                              "reg_time", "upload_date",
+                                                              "download_date", "up_carry", "down_carry", "car_limit_weight", "description"))
+
+
+
 
 
 
@@ -288,9 +307,11 @@ class call_task:
         json_file_path_list.sort()
         ocr_convert_count = 0
         ocr_convert_success_count = 0
-        ctc_info_fd = open("ctc_info.txt", 'w')
-        ctc_info_fd.write("{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n".format("task_name", "task_effect", "task_cost",
-                                                              "addr_from", "addr_to", "fare_total",
+        ctc_info_fd = open(self.config._CTC_INFO_01_FILE_PATH , 'w')
+        TaskItem.write_task_header(ctc_info_fd)
+        ctc_info_fd.write("{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n".format("task_name", "task_effect", "task_cost",
+                                                              "addr_from", "addr_to", "pos_from_x", "pos_from_y",
+                                                              "pos_to_x", "pos_to_y", "distance", "eta","fare_total",
                                                               "reg_time", "upload_date",
                                                               "download_date", "up_carry", "down_carry", "car_limit_weight", "description"))
 
@@ -334,7 +355,7 @@ class call_task:
                         #    print(task_attr)
                         #**중요하다. 여기서 결과파일을 쓴다.
                         if task_item is not None:
-                            task_item.write_task(ctc_info_fd)
+                            task_item.write_task_by_line(ctc_info_fd)
                             #이전에 입력한 task_item이 있다. file 출력을 한다.
                         task_item = TaskItem()
                         task_line = 0
@@ -372,7 +393,7 @@ class call_task:
         #end of parsing all json files
         if task_item != None:
             # 이전에 입력한 task_item이 있다. file 출력을 한다.
-            task_item.write_task(ctc_info_fd)
+            task_item.write_task_by_line(ctc_info_fd)
 
         #file close
         ctc_info_fd.close()
@@ -386,3 +407,36 @@ class call_task:
         elif task_attr == ")":
             return -1, None
         return 0, None
+
+    def read_txt(self, text_file_path):
+        task_list = []
+        with open(text_file_path) as ctcfile:
+            spamreader = csv.reader(ctcfile, delimiter='|')
+            for i, row in enumerate(spamreader):
+                if i == 0 :
+                    continue
+                task_item = TaskItem()
+                task_item.task_name         = row[0]
+                task_item.task_effect       = row[1]
+                task_item.task_cost         = row[2]
+                task_item.addr_from         = row[3]
+                task_item.addr_to   = row[4]
+
+                task_item.pos_from_x    = row[5]
+                task_item.pos_from_y    = row[6]
+                task_item.pos_to_x    = row[7]
+                task_item.pos_to_y    = row[8]
+                task_item.distance    = row[9]
+                task_item.eta    = row[10]
+
+                task_item.fare_total    = row[11]
+                task_item.reg_time  = row[12]
+                task_item.upload_date   = row[13]
+                task_item.download_date = row[14]
+                task_item.up_carry  = row[15]
+                task_item.down_carry    = row[16]
+                task_item.car_limit_weight  = row[17]
+                task_item.description   = row[18]
+                task_list.append(task_item)
+
+        return task_list
