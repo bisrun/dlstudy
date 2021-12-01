@@ -24,42 +24,17 @@ NUMBER = "[\u0030-\u0039]"
 SPECIAL = "[\u0020-\u002f\u003a-\u0040\u005b-\u0060\u007b-\u007e]"
 KOREAN = "[\uac00-\ud7a3]"
 
-class ConfigForOCR:
-    def __init__(self):
-        self.lang_list = 'ko'
-        #self.project_root_path = os.path.abspath(os.path.curdir)
-        self.project_root_path = "/project/dlstudy/easyocr_m/"
-        self.workspace_root_path = os.path.join(self.project_root_path, "workspace")
-        self.user_network_path = os.path.join(self.workspace_root_path, "user_networks")
-        #self.model_dir_path = os.path.join(self.user_network_path, "models")
-        self.model_dir_path = "/project/dlstudy/easyocr_m/workspace/user_networks/models/"
-        self.data_path = os.path.join(self.workspace_root_path, "data")
-        #self.input_data_path = os.path.join( self.data_path, "input")
-        self.input_data_path = "/project/dlstudy/easyocr_m/workspace/data/input/"
-        #self.output_data_path = os.path.join( self.data_path, "output")
-        self.output_data_path = "/project/dlstudy/easyocr_m/workspace/data/output/"
-        #self.easyocr_config_file_path = os.path.join(self.user_network_path,"config", "config.yaml")
-        self.easyocr_config_file_path = "/project/dlstudy/easyocr_m/workspace/user_networks/config/config.yaml"
-        self.model_name = "TPS-ResNet-BiLSTM-Attn"
-        self.use_custom_model = True
-        self.save_clova = True
-        self.save_labelme = False
-        self.use_multi_thread = True
-        self.merge_bbox = False
-        self.gpu = True
-        self.recog_network = 'standard'
-        self.decoder = 'greedy'
-        self.threshold = 0.1
 
 class MappersOCR():
     def __init__(self, logger):
         #self.properties = ocr_properties
         self.logger = logger
-        self.user_network_path =    "/project/dlstudy/easyocr_m/workspace/user_networks"
-        self.model_dir_path =       "/project/dlstudy/easyocr_m/workspace/user_networks/models/"
-        self.input_data_path =      "/project/dlstudy/easyocr_m/workspace/data/input/"
-        self.output_data_path =     "/project/dlstudy/easyocr_m/workspace/data/output/"
+        self.user_network_path =        "/project/dlstudy/easyocr_m/workspace/user_networks"
+        self.model_dir_path =           "/project/dlstudy/easyocr_m/workspace/user_networks/models/"
         self.easyocr_config_file_path = "/project/dlstudy/easyocr_m/workspace/user_networks/config/config.yaml"
+        self.image_base_dir_path =          "/project/dlstudy/easyocr_m/workspace/data/input/" #이미지 base directory
+        self.json_base_dir_path =         "/project/dlstudy/easyocr_m/workspace/data/output/" #Json base directory
+
         self.model_name = "TPS-ResNet-BiLSTM-Attn"
         self.save_clova = True
         self.merge_bbox = False
@@ -111,7 +86,7 @@ class MappersOCR():
 
         # 1. save json file for CLOVA General OCR
         if self.save_clova:
-            #json_file_path = self.make_directory_return_path_for_json(self.input_data_path, self.output_data_path,
+            #json_file_path = self.make_directory_return_path_for_json(self.image_base_dir_path, self.json_base_dir_path,
             #                                         src_image_path, "_naver")
             self.save_json_in_clova( json_file_path,  result, img_width, img_height, self.threshold)
 
