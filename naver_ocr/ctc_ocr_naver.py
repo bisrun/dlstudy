@@ -31,10 +31,10 @@ def run():
         #json_count = ct.parse_json_files(json_file_path_pattern)
 
         #addr 이름으로 부터 좌표를 추출한다.
-        #task_list = ct.read_txt(cc._CTC_INFO_01_FILE_PATH )
-        #ct_pos = add_coord_by_addr(task_list)
-        #ct_pos.add_coord_attr()
-        #ct_pos.write_ctc_info()
+        task_list = ct.read_txt(cc._CTC_INFO_01_FILE_PATH )
+        ct_pos = add_coord_by_addr(task_list)
+        ct_pos.add_coord_attr()
+        ct_pos.write_ctc_info()
 
         task_list2 = ct.read_txt(cc._CTC_INFO_02_FILE_PATH )
         ct_route = add_route_info(task_list2)

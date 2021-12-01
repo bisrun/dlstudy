@@ -24,6 +24,16 @@ def getFileList(image_dir):
 
     return filelist
 
+def make_directory_return_path_for_json( src_base_dir, target_base_dir, src_file_path, target_file_suffix , target_file_ext):
+    # json file폴더구조를 image file 과 동일한 폴더구조를 가지도록 한다.
+    if src_file_path.find(src_base_dir) != 0:
+        return None
+    json_file_path = src_file_path.replace(src_base_dir, target_base_dir)
+    json_file_path = "{}{}.{}".format(os.path.splitext(json_file_path)[0], target_file_suffix, target_file_ext)
+    json_temp_dir = os.path.dirname(json_file_path)
+    if os.path.exists(json_temp_dir) == False:
+        os.makedirs(json_temp_dir)
+    return json_file_path
 
 def getFile_PageImage(gpsFileNameList):
     file_info_list = []
