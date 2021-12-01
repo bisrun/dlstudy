@@ -52,40 +52,44 @@ class ConfigForOCR:
         self.threshold = 0.1
 
 class MappersOCR():
-    def __init__(self, ocr_properties, logger):
-        self.properties = ocr_properties
+    def __init__(self, logger):
+        #self.properties = ocr_properties
         self.logger = logger
-        self.model_dir_path = "/project/dlstudy/easyocr_m/workspace/user_networks/models/"
-        self.input_data_path = "/project/dlstudy/easyocr_m/workspace/data/input/"
-        self.output_data_path = "/project/dlstudy/easyocr_m/workspace/data/output/"
+        self.user_network_path =    "/project/dlstudy/easyocr_m/workspace/user_networks"
+        self.model_dir_path =       "/project/dlstudy/easyocr_m/workspace/user_networks/models/"
+        self.input_data_path =      "/project/dlstudy/easyocr_m/workspace/data/input/"
+        self.output_data_path =     "/project/dlstudy/easyocr_m/workspace/data/output/"
         self.easyocr_config_file_path = "/project/dlstudy/easyocr_m/workspace/user_networks/config/config.yaml"
         self.model_name = "TPS-ResNet-BiLSTM-Attn"
         self.save_clova = True
         self.merge_bbox = False
         self.gpu = True
+        self.use_custom_model = True
         self.recog_network = 'standard'
         self.decoder = 'greedy'
         self.threshold = 0.1
+
+
     def open(self):
-        with open(os.path.join(self.properties.easyocr_config_file_path)) as file:
+        with open(os.path.join(self.easyocr_config_file_path)) as file:
             self.easy_config = yaml.load(file, Loader=yaml.FullLoader)
-        self.properties.lang_list = self.easy_config['lang_list']
-        self.properties.labels = self.easy_config['character_list']
+        self.lang_list = self.easy_config['lang_list']
+        self.labels = self.easy_config['character_list']
 
-        if self.properties.use_custom_model:
+        if self.use_custom_model:
             # Using custom model
-            if self.properties.model_name:
-                self.logger.info(f"Using model: {self.properties.model_dir_path}/{self.properties.model_name}")
+            if self.model_name:
+                self.logger.info(f"Using model: {self.model_dir_path}/{self.model_name}")
             else:
-                self.logger.info(f"Using model: {self.properties.model_dir_path}/{self.properties.recog_network}")
+                self.logger.info(f"Using model: {self.model_dir_path}/{self.recog_network}")
 
-            self.reader = Reader(self.properties.lang_list, gpu=self.properties.gpu,
-                            model_storage_directory=self.properties.model_dir_path,
-                            user_network_directory=self.properties.user_network_path,
-                            recog_network=self.properties.recog_network,
-                            config_file=self.properties.easyocr_config_file_path,
-                            model_name=self.properties.model_name)
-            if self.properties.recog_network.split('-')[-1] == "Attn":
+            self.reader = Reader(self.lang_list, gpu=self.gpu,
+                            model_storage_directory=self.model_dir_path,
+                            user_network_directory=self.user_network_path,
+                            recog_network=self.recog_network,
+                            config_file=self.easyocr_config_file_path,
+                            model_name=self.model_name)
+            if self.recog_network.split('-')[-1] == "Attn":
                 self.properties.decoder = ""
         else:
             # Using default model
@@ -97,7 +101,7 @@ class MappersOCR():
     def close(self):
         pass
     def osr_convert(self, src_image_path ):
-        result = self.reader.readtext(src_image_path, decoder=self.properties.decoder, merge_bbox=self.properties.merge_bbox)
+        result = self.reader.readtext(src_image_path, decoder=self.decoder, merge_bbox=self.merge_bbox)
         return result
     def osr_convert_file(self, image_file_path , json_file_path):
         result = self.osr_convert(image_file_path)
@@ -106,15 +110,15 @@ class MappersOCR():
             img_width, img_height = img.size
 
         # 1. save json file for CLOVA General OCR
-        if self.properties.save_clova:
-            #json_file_path = self.make_directory_return_path_for_json(self.properties.input_data_path, self.properties.output_data_path,
+        if self.save_clova:
+            #json_file_path = self.make_directory_return_path_for_json(self.input_data_path, self.output_data_path,
             #                                         src_image_path, "_naver")
-            self.save_json_in_clova( json_file_path,  result, img_width, img_height, self.properties.threshold)
+            self.save_json_in_clova( json_file_path,  result, img_width, img_height, self.threshold)
 
         # 2. save json file for LabelMe
-        #if self.properties.save_labelme:
-        #    json_file_path = self.make_directory_return_path_for_json(self.properties.input_date_path,
-        #                                                              self.properties.output_date_path,
+        #if self.save_labelme:
+        #    json_file_path = self.make_directory_return_path_for_json(self.input_date_path,
+        #                                                              self.output_date_path,
         #                                                              src_image_path, "_label")
         #    self.save_json_for_labelme(input_path,json_file_path,  result, img_width, img_height, self.properties.threshold)
         return
@@ -203,18 +207,13 @@ class MappersOCR():
 
 if __name__ == '__main__':
 
-    properties = ConfigForOCR()
+    #properties = ConfigForOCR()
     logManager = Logger.instance()
     logManager.setLogger("log.txt")
     _logger = logManager.getLogger()
-    ocr = MappersOCR(properties, _logger)
-
+    ocr = MappersOCR( _logger)
 
     # use single thread
-    input_path = os.path.join(properties.input_data_path)
-    output_path = os.path.join(properties.output_data_path)
-    subdir_name = input_path.split('/')[-1]
-
     ocr.open()
     image_file_path = "/project/dlstudy/easyocr_m/workspace/data/input/truck/20210913/10/Screenshot_20210913-100202_24.jpg"
     json_file_path = "/project/dlstudy/easyocr_m/workspace/data/output/truck/20210913/10/Screenshot_20210913-100202_24.json"
