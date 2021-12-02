@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import time
+import glob
 import json
 import shutil
 import argparse
@@ -24,17 +25,13 @@ NUMBER = "[\u0030-\u0039]"
 SPECIAL = "[\u0020-\u002f\u003a-\u0040\u005b-\u0060\u007b-\u007e]"
 KOREAN = "[\uac00-\ud7a3]"
 
-
-class MappersOCR():
-    def __init__(self, logger):
-        #self.properties = ocr_properties
-        self.logger = logger
-        self.user_network_path =        "/project/dlstudy/easyocr_m/workspace/user_networks"
-        self.model_dir_path =           "/project/dlstudy/easyocr_m/workspace/user_networks/models/"
+class OcrProperties():
+    def __init__(self):
+        self.user_network_path = "/project/dlstudy/easyocr_m/workspace/user_networks"
+        self.model_dir_path = "/project/dlstudy/easyocr_m/workspace/user_networks/models"
         self.easyocr_config_file_path = "/project/dlstudy/easyocr_m/workspace/user_networks/config/config.yaml"
-        self.image_base_dir_path =          "/project/dlstudy/easyocr_m/workspace/data/input/" #이미지 base directory
-        self.json_base_dir_path =         "/project/dlstudy/easyocr_m/workspace/data/output/" #Json base directory
-
+        self.image_base_dir_path = "/project/dlstudy/easyocr_m/workspace/data/input"  # 이미지 base directory, 이미지는 이 디렉토리의 하위디렉토리에 있어야 함
+        self.json_base_dir_path = "/project/dlstudy/easyocr_m/workspace/data/output"  # Json base directory
         self.model_name = "TPS-ResNet-BiLSTM-Attn"
         self.save_clova = True
         self.merge_bbox = False
@@ -43,29 +40,74 @@ class MappersOCR():
         self.recog_network = 'standard'
         self.decoder = 'greedy'
         self.threshold = 0.1
+        self.lang_list = []
+        self.labels = ""
+        self.instance_name = ""
+        self.thread_lock = threading.Lock()
+        self.image_file_list = []
+        self.image_file_count = 0
+        self.image_proc_index = -1
+
+        self.gatherImageFilePath(self.image_base_dir_path)
+
+    def gatherImageFilePath(self, image_base_dir_path):
+        self.image_file_list  = []
+        image_file_path_pattern = os.path.join(image_base_dir_path, "**/*.jpg")
+        for filename in glob.iglob(image_file_path_pattern, recursive=True):
+            self.image_file_list .append(filename)
+        self.image_file_count = len(self.image_file_list)
+        return self.image_file_list
+
+    def getTaskImagePath(self):
+        self.thread_lock.acquire()
+        self.image_proc_index += 1
+        self.thread_lock.release()
+        if self.image_proc_index < self.image_file_count:
+            return self.image_file_list[self.image_proc_index]
+        else:
+            return None
 
 
+
+class MappersOCR():
+    def __init__(self, ocr_properties:OcrProperties, logger, instance_name="mappers_ocr"):
+        self.properties = ocr_properties
+        self.logger = logger
+        self.instance_name =instance_name
+
+
+    def __enter__(self):
+        if self.open() == False :
+            raise Exception('exception:mappers_ocr open error 1')
+        return self
+    def __exit__(self,type,value,traceback):
+        self.close()
+        self.logger.info(f">>> finsih {self.instance_name}")
+        pass
+
+    # easy ocr을 사용하기 위한 모델파일을 연다.
+    # thread safe 인지 모르겠다. 그래서, 각 thread는 MappersOCR instance를 가지도록한다.
     def open(self):
-        with open(os.path.join(self.easyocr_config_file_path)) as file:
+        with open(os.path.join(self.properties.easyocr_config_file_path)) as file:
             self.easy_config = yaml.load(file, Loader=yaml.FullLoader)
-        self.lang_list = self.easy_config['lang_list']
-        self.labels = self.easy_config['character_list']
+        self.properties.lang_list = self.easy_config['lang_list']
+        self.properties.labels = self.easy_config['character_list']
 
-        if self.use_custom_model:
+        if self.properties.use_custom_model:
             # Using custom model
-            if self.model_name:
-                self.logger.info(f"Using model: {self.model_dir_path}/{self.model_name}")
+            if self.properties.model_name:
+                self.logger.info(f"Using model: {self.properties.model_dir_path}/{self.properties.model_name}")
             else:
-                self.logger.info(f"Using model: {self.model_dir_path}/{self.recog_network}")
+                self.logger.info(f"Using model: {self.properties.model_dir_path}/{self.properties.recog_network}")
 
-            self.reader = Reader(self.lang_list, gpu=self.gpu,
-                            model_storage_directory=self.model_dir_path,
-                            user_network_directory=self.user_network_path,
-                            recog_network=self.recog_network,
-                            config_file=self.easyocr_config_file_path,
-                            model_name=self.model_name)
-            if self.recog_network.split('-')[-1] == "Attn":
-                self.properties.decoder = ""
+            self.reader = Reader(self.properties.lang_list, gpu=self.properties.gpu,
+                            model_storage_directory=self.properties.model_dir_path,
+                            user_network_directory=self.properties.user_network_path,
+                            recog_network=self.properties.recog_network,
+                            config_file=self.properties.easyocr_config_file_path,
+                            model_name=self.properties.model_name)
+            if self.properties.recog_network.split('-')[-1] == "Attn":
+                self.properties.properties.decoder = ""
         else:
             # Using default model
             print(f"Using model: EasyOCR default (None-VGG-BiLSTM-CTC)")
@@ -73,11 +115,19 @@ class MappersOCR():
                             model_storage_directory=self.properties.model_storage_directory)
 
 
+        return True
+
     def close(self):
         pass
+
+
+
+
+
     def osr_convert(self, src_image_path ):
-        result = self.reader.readtext(src_image_path, decoder=self.decoder, merge_bbox=self.merge_bbox)
+        result = self.reader.readtext(src_image_path, decoder=self.properties.decoder, merge_bbox=self.properties.merge_bbox)
         return result
+
     def osr_convert_file(self, image_file_path , json_file_path):
         result = self.osr_convert(image_file_path)
 
@@ -85,10 +135,10 @@ class MappersOCR():
             img_width, img_height = img.size
 
         # 1. save json file for CLOVA General OCR
-        if self.save_clova:
+        if self.properties.save_clova:
             #json_file_path = self.make_directory_return_path_for_json(self.image_base_dir_path, self.json_base_dir_path,
             #                                         src_image_path, "_naver")
-            self.save_json_in_clova( json_file_path,  result, img_width, img_height, self.threshold)
+            self.save_json_in_clova( json_file_path,  result, img_width, img_height, self.properties.threshold)
 
         # 2. save json file for LabelMe
         #if self.save_labelme:
@@ -179,17 +229,51 @@ class MappersOCR():
             os.makedirs(json_temp_dir)
         return json_file_path
 
+def one_thread(ocr_properties):
+    proc_count = 0
+    with MappersOCR(ocr_properties, _logger) as ocr :
+    #ocr = MappersOCR(ocr_properties, _logger)
+        # use single thread
+        #ocr.open()
+        while True :
+            #image_file_path = "/project/dlstudy/easyocr_m/workspace/data/input/truck/20210913/10/Screenshot_20210913-100202_24.jpg"
+            #json_file_path = "/project/dlstudy/easyocr_m/workspace/data/output/truck/20210913/10/Screenshot_20210913-100202_24.json"
+            image_file_path = ocr_properties.getTaskImagePath()
+            if image_file_path == None:
+                return
+            proc_count += 1
+            json_file_path = ocr.make_directory_return_path_for_json(ocr.properties.image_base_dir_path, ocr.properties.json_base_dir_path, image_file_path,"")
+            ocr.osr_convert_file( image_file_path, json_file_path )
+
+            if proc_count > 10 :
+                return
+
+
+def multi_thread(ocr_properties):
+    thread_count = os.cpu_count()
+    thread_list = []
+    for thr in range(thread_count):
+        thread = threading.Thread(target=one_thread, args=(ocr_properties, _logger, f"thr_{thr:02d}" ))
+        thread.start()
+        thread_list.append(thread)
+
+    for jj, thread in enumerate(thread_list):
+        thread.join()
+        print(f"{jj + 1}-th thread is terminated")
+
+
 
 if __name__ == '__main__':
-
     #properties = ConfigForOCR()
     logManager = Logger.instance()
     logManager.setLogger("log.txt")
     _logger = logManager.getLogger()
-    ocr = MappersOCR( _logger)
+    ocr_properties = OcrProperties()
+    one_thread(ocr_properties)
 
-    # use single thread
-    ocr.open()
-    image_file_path = "/project/dlstudy/easyocr_m/workspace/data/input/truck/20210913/10/Screenshot_20210913-100202_24.jpg"
-    json_file_path = "/project/dlstudy/easyocr_m/workspace/data/output/truck/20210913/10/Screenshot_20210913-100202_24.json"
-    ocr.osr_convert_file( image_file_path, json_file_path )
+    #multi_thread(ocr_properties)
+
+
+
+
+
