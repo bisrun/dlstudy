@@ -245,7 +245,7 @@ def one_thread(ocr_properties):
             json_file_path = ocr.make_directory_return_path_for_json(ocr.properties.image_base_dir_path, ocr.properties.json_base_dir_path, image_file_path,"")
             ocr.osr_convert_file( image_file_path, json_file_path )
 
-            if proc_count > 10 :
+            if proc_count > 10:
                 return
 
 
