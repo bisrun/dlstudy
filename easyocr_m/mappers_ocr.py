@@ -63,9 +63,9 @@ class OcrProperties():
         self.image_proc_index += 1
         self.thread_lock.release()
         if self.image_proc_index < self.image_file_count:
-            return self.image_file_list[self.image_proc_index]
+            return self.image_proc_index,  self.image_file_list[self.image_proc_index]
         else:
-            return None
+            return -1, None
 
 
 
@@ -146,7 +146,7 @@ class MappersOCR():
         #                                                              self.output_date_path,
         #                                                              src_image_path, "_label")
         #    self.save_json_for_labelme(input_path,json_file_path,  result, img_width, img_height, self.properties.threshold)
-        return
+        return True
 
     def save_json_in_clova(self,  output_json_path, data, width, height, threshold=0.1):
         json_temp_dir = os.path.dirname(output_json_path)
@@ -229,29 +229,33 @@ class MappersOCR():
             os.makedirs(json_temp_dir)
         return json_file_path
 
-def one_thread(ocr_properties):
+def one_thread(ocr_properties, logger, thr_name):
     proc_count = 0
-    with MappersOCR(ocr_properties, _logger) as ocr :
-    #ocr = MappersOCR(ocr_properties, _logger)
+    with MappersOCR(ocr_properties, logger, thr_name) as ocr :
+    #ocr = MappersOCR(ocr_properties, logger)
         # use single thread
         #ocr.open()
         while True :
             #image_file_path = "/project/dlstudy/easyocr_m/workspace/data/input/truck/20210913/10/Screenshot_20210913-100202_24.jpg"
             #json_file_path = "/project/dlstudy/easyocr_m/workspace/data/output/truck/20210913/10/Screenshot_20210913-100202_24.json"
-            image_file_path = ocr_properties.getTaskImagePath()
-            if image_file_path == None:
+            idx, image_file_path = ocr_properties.getTaskImagePath()
+            if idx < 0:
                 return
 
             proc_count += 1
             json_file_path = ocr.make_directory_return_path_for_json(ocr.properties.image_base_dir_path, ocr.properties.json_base_dir_path, image_file_path,"")
-            ocr.osr_convert_file( image_file_path, json_file_path )
+            res = ocr.osr_convert_file( image_file_path, json_file_path )
+            if res:
+                _logger.info(f"succss: {idx}/{ocr_properties.image_file_count} ,thr:{ocr.instance_name} file:{image_file_path}")
+
 
             if proc_count > 10:
                 return
 
 
 def multi_thread(ocr_properties):
-    thread_count = os.cpu_count()
+    thread_count = (int)(os.cpu_count()/2)
+    #thread_count = 5
     thread_list = []
     for thr in range(thread_count):
         thread = threading.Thread(target=one_thread, args=(ocr_properties, _logger, f"thr_{thr:02d}" ))
@@ -270,9 +274,8 @@ if __name__ == '__main__':
     logManager.setLogger("log.txt")
     _logger = logManager.getLogger()
     ocr_properties = OcrProperties()
-    one_thread(ocr_properties)
-
-    #multi_thread(ocr_properties)
+    #one_thread(ocr_properties)
+    multi_thread(ocr_properties)
 
 
 
