@@ -53,7 +53,7 @@ run_step_function = {
 def run():
     try :
         bot = telegram.Bot(token=cc._TELEGRAM_TOKEN)
-        valid_step = {1:False, 2:True, 3:True, 4:True}
+        valid_step = {1:True, 2:True, 3:True, 4:True}
         step_name = {1:"ocr", 2:"parsing", 3:"addr", 4:"routing"}
 
         ct = call_task()

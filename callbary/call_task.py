@@ -301,19 +301,15 @@ class call_task:
         return full_line_item_list
 
 
-    def parse_json_files(self,json_file_path_pattern):
+    def parse_json_files(self,json_file_path_pattern, header=True):
         json_file_path_list = common.getFileList(json_file_path_pattern)
         #json_file_path_list = sorted(json_file_path_list, key=lambda k: k, reverse=False)
         json_file_path_list.sort()
         ocr_convert_count = 0
         ocr_convert_success_count = 0
         ctc_info_fd = open(self.config._CTC_INFO_01_FILE_PATH , 'w')
-        TaskItem.write_task_header(ctc_info_fd)
-        ctc_info_fd.write("{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n".format("task_name", "task_effect", "task_cost",
-                                                              "addr_from", "addr_to", "pos_from_x", "pos_from_y",
-                                                              "pos_to_x", "pos_to_y", "distance", "eta","fare_total",
-                                                              "reg_time", "upload_date",
-                                                              "download_date", "up_carry", "down_carry", "car_limit_weight", "description"))
+        if header :
+            TaskItem.write_task_header(ctc_info_fd)
 
         task_item = None
 
